@@ -1,0 +1,112 @@
+# Dependencies
+node_modules/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Environment variables
+.env
+.env.local
+.env.production
+.env*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Build outputs
+.next/
+out/
+build/
+dist/
+*.egg-info/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+.pnpm-debug.log*
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Testing
+coverage/
+.nyc_output/
+.coverage
+.coverage.*
+htmlcov/
+.pytest_cache/
+nosetests.xml
+coverage.xml
+*.cover
+
+# Docker volumes (local bind mounts)
+volumes/uploads/*
+volumes/data/*
+volumes/trees/*
+volumes/settings/*
+!volumes/**/.gitkeep
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Uploaded files
+uploads/
+
+# Cache
+.cache/
+*.cache
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.temp
+
+# Package manager locks (keep these for reproducibility)
+!package-lock.json
+!yarn.lock
+!pnpm-lock.yaml
+
+# OS files
+Thumbs.db
+desktop.ini
+
+# Python virtual environments
+venv/
+ENV/
+env/
+.venv/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# Documentation build
+docs/_build/
+docs/.build/
+
+# Certificates and keys
+*.pem
+*.key
+*.crt
+*.cer
+encryption.key
+.encryption_key
+*/.encryption_key

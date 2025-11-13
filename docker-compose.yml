@@ -1,0 +1,251 @@
+services:
+  # Frontend - Beautiful UI with Next.js
+  frontend:
+    build: ./frontend
+    container_name: indexer-frontend
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules  # Isolate node_modules in container
+      - /app/.next         # Isolate build artifacts
+    environment:
+      - NODE_ENV=development
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
+      - NEXT_PUBLIC_WS_URL=ws://localhost:8004
+    depends_on:
+      - api-gateway
+    networks:
+      - indexer-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # API Gateway - Central routing and orchestration
+  api-gateway:
+    build: ./api-gateway
+    container_name: indexer-gateway
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./api-gateway:/app
+    environment:
+      - ENVIRONMENT=development
+      - DOCUMENT_SERVICE_URL=http://document-service:8001
+      - TREE_SERVICE_URL=http://tree-service:8002
+      - QUERY_SERVICE_URL=http://query-service:8003
+      - CHAT_SERVICE_URL=http://chat-service:8004
+      - STORAGE_SERVICE_URL=http://storage-service:8005
+      - CACHE_SERVICE_URL=http://cache-service:8006
+      - SETTINGS_SERVICE_URL=http://settings-service:8007
+    depends_on:
+      - document-service
+      - tree-service
+      - query-service
+      - chat-service
+      - storage-service
+      - cache-service
+      - settings-service
+    networks:
+      - indexer-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Document Service - PDF processing
+  document-service:
+    build: ./document-service
+    container_name: indexer-documents
+    ports:
+      - "8001:8001"
+    volumes:
+      - ./document-service:/app
+      - uploads:/app/uploads
+    environment:
+      - SERVICE_NAME=document-service
+      - PORT=8001
+      - MAX_FILE_SIZE_MB=100
+      - SUPPORTED_FORMATS=pdf
+    networks:
+      - indexer-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Tree Service - PageIndex tree generation
+  tree-service:
+    build: ./tree-service
+    container_name: indexer-trees
+    ports:
+      - "8002:8002"
+    volumes:
+      - ./tree-service:/app
+      - tree-data:/app/trees
+    environment:
+      - SERVICE_NAME=tree-service
+      - PORT=8002
+      - SETTINGS_SERVICE_URL=http://settings-service:8007
+    networks:
+      - indexer-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Query Service - Reasoning engine
+  query-service:
+    build: ./query-service
+    container_name: indexer-query
+    ports:
+      - "8003:8003"
+    volumes:
+      - ./query-service:/app
+    environment:
+      - SERVICE_NAME=query-service
+      - PORT=8003
+      - SETTINGS_SERVICE_URL=http://settings-service:8007
+      - CACHE_SERVICE_URL=http://cache-service:8006
+    networks:
+      - indexer-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8003/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Chat Service - WebSocket streaming
+  chat-service:
+    build: ./chat-service
+    container_name: indexer-chat
+    ports:
+      - "8004:8004"
+    volumes:
+      - ./chat-service:/app
+    environment:
+      - SERVICE_NAME=chat-service
+      - PORT=8004
+      - SETTINGS_SERVICE_URL=http://settings-service:8007
+      - QUERY_SERVICE_URL=http://query-service:8003
+    networks:
+      - indexer-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8004/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Storage Service - File and data management
+  storage-service:
+    build: ./storage-service
+    container_name: indexer-storage
+    ports:
+      - "8005:8005"
+    volumes:
+      - ./storage-service:/app
+      - data:/app/data
+      - uploads:/app/uploads
+    environment:
+      - SERVICE_NAME=storage-service
+      - PORT=8005
+      - DATABASE_PATH=/app/data/storage.db
+    networks:
+      - indexer-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8005/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Cache Service - In-memory caching layer
+  cache-service:
+    build: ./cache-service
+    container_name: indexer-cache
+    ports:
+      - "8006:8006"
+    volumes:
+      - ./cache-service:/app
+      # No persistent volume - ephemeral cache by design
+    environment:
+      - SERVICE_NAME=cache-service
+      - PORT=8006
+      - CACHE_TTL_DEFAULT=3600
+      - MAX_CACHE_SIZE_MB=512
+    networks:
+      - indexer-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8006/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Settings Service - Configuration and API key management
+  settings-service:
+    build: ./settings-service
+    container_name: indexer-settings
+    ports:
+      - "8007:8007"
+    volumes:
+      - ./settings-service:/app
+      - settings-data:/app/data
+    environment:
+      - SERVICE_NAME=settings-service
+      - PORT=8007
+      - DATABASE_PATH=/app/data/settings.db
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY}
+    networks:
+      - indexer-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8007/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+networks:
+  indexer-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16
+
+volumes:
+  uploads:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./volumes/uploads
+  data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./volumes/data
+  tree-data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./volumes/trees
+  settings-data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./volumes/settings
+  # Note: No cache volume - ephemeral by design!

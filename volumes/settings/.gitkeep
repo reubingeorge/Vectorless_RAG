@@ -1,0 +1,2 @@
+# This file ensures the settings directory is tracked in git
+# Actual settings database will be ignored
