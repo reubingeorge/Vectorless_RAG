@@ -93,6 +93,164 @@ This project implements a 9-microservice architecture, where each service has a 
 | **Cache Service**    | 8006 | Query result caching with TTL                | FastAPI, in-memory cache      |
 | **Settings Service** | 8007 | API key management, configuration storage    | FastAPI, encryption           |
 
+### PageIndex Tree Generation Flow
+
+```
+PDF Document Upload
+    │
+    ▼
+┌─────────────────────────────────────────────────────────────────┐
+│ Step 1: Fetch Document & Settings (Tree Service)                │
+│  1. Get document metadata from Storage Service                  │
+│  2. Download PDF file bytes from Storage Service                │
+│  3. Fetch tree generation config from Settings Service:         │
+│     - model (default: gpt-4o-2024-11-20)                        │
+│     - toc_check_page_num (default: 20)                          │
+│     - max_page_num_each_node (default: 10)                      │
+│     - max_token_num_each_node (default: 20,000)                 │
+│     - if_add_node_id, if_add_node_summary, if_add_node_text     │
+│  4. Retrieve encrypted OpenAI API key from Settings Service     │
+│  5. Emit progress: "Starting tree generation..." (0%)           │
+└─────────────────────────────────────────────────────────────────┘
+    │
+    ▼ {pdf_bytes, tree_config, api_key}
+    │
+┌─────────────────────────────────────────────────────────────────┐
+│ Step 2: PDF Text Extraction (PageIndex Algorithm)               │
+│  1. Use PyPDF2 to extract text from all pages                   │
+│  2. For each page: count tokens using tiktoken                  │
+│  3. Create page list: [(page_text, token_count), ...]           │
+│  4. Emit progress: "Extracted N pages from PDF" (40%)           │
+└─────────────────────────────────────────────────────────────────┘
+    │
+    ▼ page_list: [(text, tokens)] for each page
+    │
+┌─────────────────────────────────────────────────────────────────┐
+│ Step 3: Table of Contents Detection                             │
+│  1. Scan first N pages (toc_check_page_num, default: 20)        │
+│  2. For each page: use GPT-4 to detect if it contains TOC       │
+│  3. Find consecutive TOC pages until detection stops            │
+│  4. Emit progress: "Detecting table of contents..." (45%)       │
+│                                                                 │
+│  If TOC Found:                                                  │
+│    → Extract TOC content from detected pages                    │
+│    → Check if TOC includes page numbers                         │
+│    → If yes: Transform TOC to structured JSON with hierarchy    │
+│    → If no: Analyze document to generate structure              │
+│    → Emit: "Found TOC on N pages, extracting..." (50%)          │
+│                                                                 │
+│  If No TOC Found:                                               │
+│    → Use process_no_toc() to generate structure from content    │
+│    → Group pages into chunks respecting token limits            │
+│    → Use GPT-4 to extract hierarchical structure from text      │
+│    → Emit: "No TOC found, analyzing document..." (50%)          │
+└─────────────────────────────────────────────────────────────────┘
+    │
+    ▼ toc_with_page_number: [{structure, title, physical_index}]
+    │
+┌─────────────────────────────────────────────────────────────────┐
+│ Step 4: Structure Validation & Enhancement                      │
+│  1. Add preface node if document doesn't start at page 1        │
+│  2. Verify titles appear at page start (parallel GPT-4 calls):  │
+│     - For each section: check if title appears at page begin    │
+│     - Mark sections with 'appear_start': yes/no                 │
+│  3. Filter valid items with physical_index                      │
+│  4. Emit progress: "Verifying section titles..." (60%)          │
+└─────────────────────────────────────────────────────────────────┘
+    │
+    ▼ valid_toc_items: validated structure with page mappings
+    │
+┌─────────────────────────────────────────────────────────────────┐
+│ Step 5: Hierarchical Tree Building                              │
+│  1. Post-process structure to calculate start/end indices:      │
+│     - start_index = physical_index of section                   │
+│     - end_index = physical_index of next section - 1            │
+│  2. Convert flat list to nested tree using structure field:     │
+│     - "1" → root node                                           │
+│     - "1.1", "1.2" → children of "1"                            │
+│     - "1.1.1" → child of "1.1"                                  │
+│  3. Build parent-child relationships recursively                │
+│  4. Emit progress: "Building tree from N sections..." (65%)     │
+└─────────────────────────────────────────────────────────────────┘
+    │
+    ▼ toc_tree: [{title, start_index, end_index, nodes: [...]}]
+    │
+┌─────────────────────────────────────────────────────────────────┐
+│ Step 6: Process Large Nodes Recursively                         │
+│  1. For each node, check if it exceeds limits:                  │
+│     - Pages > max_page_num_each_node (default: 10)              │
+│     - Tokens > max_token_num_each_node (default: 20,000)        │
+│  2. If large node found:                                        │
+│     - Run process_no_toc() on node's page range                 │
+│     - Generate sub-structure for this section                   │
+│     - Add child nodes recursively                               │
+│  3. Continue until all nodes meet size constraints              │
+│  4. Emit progress: "Processing large sections..." (70%)         │
+└─────────────────────────────────────────────────────────────────┘
+    │
+    ▼ toc_tree: refined with properly sized leaf nodes
+    │
+┌─────────────────────────────────────────────────────────────────┐
+│ Step 7: Node Enhancement & Finalization                         │
+│  1. Add unique node IDs (if if_add_node_id = true):             │
+│     - Sequential IDs: "0000", "0001", "0002", etc.              │
+│     - Emit: "Adding unique node identifiers..." (75%)           │
+│                                                                 │
+│  2. Add text content to nodes:                                  │
+│     - if_add_node_text = true: full text per node               │
+│     - if_add_node_text = false: text with <physical_index> tags │
+│     - Emit: "Adding text content to nodes..." (78%)             │
+│                                                                 │
+│  3. Generate AI summaries (if if_add_node_summary = true):      │
+│     - For each node: send text to GPT-4 for summary             │
+│     - Add 100-200 word description to node metadata             │
+│     - Emit: "Generating AI summaries..." (82%)                  │
+└─────────────────────────────────────────────────────────────────┘
+    │
+    ▼ Complete Tree with metadata
+    │
+┌─────────────────────────────────────────────────────────────────┐
+│ Step 8: Storage & Status Update (Tree Service)                  │
+│  1. Count total nodes in tree structure recursively             │
+│  2. Save tree JSON to Storage Service:                          │
+│     {doc_id, tree_data, num_pages, num_nodes, config}           │
+│  3. Emit progress: "Tree generated with N nodes" (80%)          │
+│  4. Update document status to "indexed" in database             │
+│  5. Emit progress: "Finalizing..." (95%)                        │
+│  6. Emit completion event with tree_id (100%)                   │
+└─────────────────────────────────────────────────────────────────┘
+    │
+    ▼
+Complete PageIndex Tree Ready for Querying
+{
+  tree_id: int,
+  doc_id: int,
+  num_pages: int,
+  num_nodes: int,
+  tree: [
+    {
+      node_id: "0000",
+      title: "Chapter 1: Introduction",
+      start_index: 1,
+      end_index: 15,
+      text: "<physical_index_1>...</physical_index_1>...",
+      summary?: "AI-generated summary...",
+      nodes?: [
+        {
+          node_id: "0001",
+          title: "1.1 Background",
+          start_index: 1,
+          end_index: 8,
+          ...
+        }
+      ]
+    }
+  ],
+  config: {model, max_page_num_each_node, ...},
+  created_at: timestamp
+}
+```
+
 ### PageIndex Two-Stage Retrieval Flow
 
 ```
@@ -182,23 +340,18 @@ Answer + Citations + Cost + Relevant Nodes + Cached Status
 
 ```bash
 git clone <repository-url>
-cd indexer
 ```
 
-2. Create environment file with your OpenAI API key:
-
-```bash
-cat > .env << EOF
-OPENAI_API_KEY=your-openai-api-key-here
-ENCRYPTION_KEY=$(openssl rand -hex 32)
-EOF
-```
-
-3. Build and start all services:
+2. Build and start all services:
 
 ```bash
 docker-compose up -d --build
 ```
+
+3. Enter your OpenAI key in the webpage as shown below:
+![img.png](enter_key.png)
+- Click `Verify` to validate your OpenAI key
+- Click `Save Settings` after the key has been verified
 
 4. Access the application:
 
