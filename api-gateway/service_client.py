@@ -1,5 +1,5 @@
 """
-Service Client with Retry Logic and Circuit Breakers - Phase 3
+Service Client with Retry Logic and Circuit Breakers
 """
 import httpx
 from httpx_retries import RetryTransport, Retry

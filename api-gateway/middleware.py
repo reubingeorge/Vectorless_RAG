@@ -1,5 +1,5 @@
 """
-Middleware for API Gateway - Phase 3 Integration Features
+Middleware for API Gateway
 """
 from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
